@@ -2,10 +2,10 @@ import pactum from 'pactum';
 import { SimpleReporter } from '../simple-reporter';
 import { StatusCodes } from 'http-status-codes';
 
-describe('FakeStore API', () => {
+describe('DummyJSON API', () => {
     const p = pactum;
     const rep = SimpleReporter;
-    const baseUrl = 'https://fakestoreapi.com';
+    const baseUrl = 'https://dummyjson.com';
 
     p.request.setDefaultTimeout(90000);
 
@@ -14,7 +14,23 @@ describe('FakeStore API', () => {
     });
 
     describe('Produtos', () => {
-        it('Retorna um produto', async () => {
+        it('Retorna todos os produtos', async () => {
+            await p
+                .spec()
+                .get(`${baseUrl}/products`)
+                .expectStatus(StatusCodes.OK)
+                .expectJsonSchema({
+                    type: 'object',
+                    properties: {
+                        products: { type: 'array' },
+                        total: { type: 'number' },
+                        skip: { type: 'number' },
+                        limit: { type: 'number' },
+                    },
+                });
+        });
+
+        it('Retorna um produto específico pelo ID', async () => {
             await p
                 .spec()
                 .get(`${baseUrl}/products/1`)
@@ -25,138 +41,133 @@ describe('FakeStore API', () => {
                         id: { type: 'number' },
                         title: { type: 'string' },
                         price: { type: 'number' },
-                        description: { type: 'string' },
                         category: { type: 'string' },
                     },
                 });
         });
 
-        it('Retorna todos os produtos', async () => {
-            await p
-                .spec()
-                .get(`${baseUrl}/products`)
-                .expectStatus(StatusCodes.OK)
-                .expectJsonSchema({
-                    type: 'array'
-                });
-        });
-
-        it('Retorna uma lista limitada de produtos', async () => {
-            await p
-                .spec()
-                .get(`${baseUrl}/products?limit=5`)
-                .expectStatus(StatusCodes.OK)
-                .expectJsonLength(5);
-        });
-
         it('Adiciona um novo produto', async () => {
-            const requestBody = {
-                title: 'Produto de Teste',
-                price: 15.5,
-                description: 'lorem ipsum set',
-                image: 'https://i.pravatar.cc',
-                category: 'electronic'
+            const newProduct = {
+                title: 'Caneca do Batman',
+                price: 15.99,
             };
+
             await p
                 .spec()
-                .post(`${baseUrl}/products`)
-                .withJson(requestBody)
+                .post(`${baseUrl}/products/add`)
+                .withHeaders('Content-Type', 'application/json')
+                .withJson(newProduct)
                 .expectStatus(StatusCodes.CREATED)
-                .expectJsonLike({
-                    id: /\d+/,
-                    title: 'Produto de Teste'
-                });
+                .expectJsonSchema({
+                    type: 'object',
+                    properties: {
+                        id: { type: 'number' },
+                        title: { type: 'string' },
+                    }
+                })
+                .expectJson('title', newProduct.title);
         });
-        
-        it('Atualiza um produto', async () => {
-            const requestBody = {
-                title: 'Produto Atualizado',
-                price: 20.0,
-                description: 'nova descrição',
-                image: 'https://i.pravatar.cc',
-                category: 'jewelery'
-            };
+
+        it('Atualiza um produto existente', async () => {
             await p
                 .spec()
-                .put(`${baseUrl}/products/7`)
-                .withJson(requestBody)
+                .put(`${baseUrl}/products/1`)
+                .withHeaders('Content-Type', 'application/json')
+                .withJson({
+                    title: 'iPhone 15 Pro',
+                    price: 1299.99,
+                })
                 .expectStatus(StatusCodes.OK)
                 .expectJsonLike({
-                    id: 7,
-                    title: 'Produto Atualizado'
+                    id: 1,
+                    title: 'iPhone 15 Pro',
                 });
         });
 
         it('Deleta um produto', async () => {
             await p
                 .spec()
-                .delete(`${baseUrl}/products/6`)
+                .delete(`${baseUrl}/products/1`)
                 .expectStatus(StatusCodes.OK)
                 .expectJsonLike({
-                    id: 6
+                    isDeleted: true,
                 });
         });
-        
-        it('Retorna todas as categorias', async () => {
-            await p
-                .spec()
-                .get(`${baseUrl}/products/categories`)
-                .expectStatus(StatusCodes.OK)
-                .expectJsonSchema({ type: 'array' });
-        });
-    });
 
-
-    describe('Usuários', () => {
-        it('Retorna todos os usuários', async () => {
+        it('Busca por produtos com um termo', async () => {
             await p
                 .spec()
-                .get(`${baseUrl}/users`)
+                .get(`${baseUrl}/products/search`)
+                .withQueryParams('q', 'phone')
                 .expectStatus(StatusCodes.OK)
-                .expectJsonSchema({ type: 'array' });
-        });
-        
-        it('Retorna um usuário específico', async () => {
-            await p
-                .spec()
-                .get(`${baseUrl}/users/2`)
-                .expectStatus(StatusCodes.OK)
-                .expectJsonLike({
-                    id: 2,
-                    username: 'mor_2314'
-                });
-        });
-    });
-
-    describe('Autenticação', () => {
-        it('Realiza o login com sucesso', async () => {
-            const credentials = {
-                username: 'mor_2314',
-                password: '83r5^_'
-            };
-            await p
-                .spec()
-                .post(`${baseUrl}/auth/login`)
-                .withJson(credentials)
-                .expectStatus(StatusCodes.CREATED)
-                .expectJsonSchema({
+                .expectJsonSchema('products[0]', {
                     type: 'object',
                     properties: {
-                        token: { type: 'string' }
+                        id: { type: 'number' },
+                        title: { type: 'string' },
+                    },
+                });
+        });
+
+        it('Lista produtos de uma categoria específica', async () => {
+            await p
+                .spec()
+                .get(`${baseUrl}/products/category/smartphones`)
+                .expectStatus(StatusCodes.OK)
+                .expectJsonSchema('products[0]', { 
+                    type: 'object',
+                    properties: {
+                        id: { type: 'number' },
+                        title: { type: 'string' },
+                        category: { type: 'string', enum: ['smartphones'] }
                     }
                 });
         });
+    });
 
-        it('Falha ao tentar logar com senha inválida', async () => {
-            const credentials = {
-                username: 'mor_2314',
-                password: 'senhaincorreta'
-            };
+    describe('Carrinhos', () => {
+        it('Retorna os carrinhos de um usuário específico', async () => {
             await p
                 .spec()
-                .post(`${baseUrl}/auth/login`)
-                .withJson(credentials)
-                .expectStatus(StatusCodes.UNAUTHORIZED);
+                .get(`${baseUrl}/carts/user/5`)
+                .expectStatus(StatusCodes.OK)
+                .expectJsonSchema({
+                    type: 'object',
+                    properties: {
+                        carts: { type: 'array' },
+                    },
+                });
+        });
+    });
+
+    describe('Posts', () => {
+        it('Retorna todos os posts', async () => {
+            await p
+                .spec()
+                .get(`${baseUrl}/posts`)
+                .expectStatus(StatusCodes.OK)
+                .expectJsonSchema({
+                    type: 'object',
+                    properties: {
+                        posts: { type: 'array' },
+                        total: { type: 'number' },
+                    },
+                });
+        });
+
+        it('Retorna os comentários de um post específico', async () => {
+            await p
+                .spec()
+                .get(`${baseUrl}/posts/1/comments`)
+                .expectStatus(StatusCodes.OK)
+                .expectJsonSchema({
+                    type: 'object',
+                    properties: {
+                        comments: { type: 'array' },
+                        total: { type: 'number' },
+                    },
+                })
+                .expectJsonLike('comments[0].postId', 1);
         });
     });
 });
